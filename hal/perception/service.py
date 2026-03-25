@@ -1,4 +1,4 @@
-"""Side-loaded perception daemon skeleton."""
+"""Side-loaded perception daemon with fake-data friendly inputs."""
 
 from __future__ import annotations
 

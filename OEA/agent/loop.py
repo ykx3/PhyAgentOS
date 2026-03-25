@@ -143,18 +143,12 @@ class AgentLoop:
         if isinstance(self.provider, ProvidersManager):
             self.tools.register(AgentModeTool(self.provider))
             self.tools.register(ImageTool(self.provider, send_callback=self.bus.publish_outbound))
-            # Embodied action tool (Critic-gated hardware dispatch)
-            self.tools.register(EmbodiedActionTool(
-                workspace=self.workspace,
-                provider=self.provider,
-                model=self.model,
-            ))
-        # Embodied action tool (Critic-gated hardware dispatch)
-        self.tools.register(EmbodiedActionTool(
+
+        action_tool = EmbodiedActionTool(
             workspace=self.workspace,
             provider=self.provider,
             model=self.model,
-        ))
+        )
         self.tools.register(action_tool)
         self.tools.register(SceneGraphQueryTool(workspace=self.workspace))
         self.tools.register(SemanticNavigationTool(
