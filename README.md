@@ -173,5 +173,5 @@ PRs and Issues are welcome! Please refer to `docs/USER_DEVELOPMENT_GUIDE.md` for
 ## Affiliations
 
 <p align="center">
-  <img alt="SYSU HCP" src="https://raw.githubusercontent.com/SYSU-HCP-EAI/PhyAgentOS/blob/main/docs/imgs/HCP.png" height="68"/>
+  <img alt="SYSU HCP" src="https://raw.githubusercontent.com/SYSU-HCP-EAI/PhyAgentOS/blob/main/docs/imgs/HCP.jpg" height="68"/>
 </p>
