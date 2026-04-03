@@ -52,7 +52,7 @@ PhyAgentOS utilizes a **"State-as-a-File"** protocol matrix, natively supporting
 <div align="center">
   <img src="docs/imgs/Franka_QA_Pick&Up.gif" alt="rekep" width="900">
   <br>
-  PhyAgentOS achieves human-machine dialog and natural language-driven pick&up task through ReKep (Franka Research 3).
+  PhyAgentOS achieves realtime dialog and natural language-driven pick&up task through ReKep (Franka Research 3).
 </div>
 
 ## 🏗️ Architecture
