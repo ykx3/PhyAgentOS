@@ -48,6 +48,21 @@ def _load_scene(path: Path) -> dict[str, dict]:
     return load_scene_from_md(path)
 
 
+def load_driver_config(path: Path | None) -> dict[str, object]:
+    """Load a driver config JSON object for transparent kwargs passthrough."""
+    if path is None:
+        return {}
+    if not path.exists():
+        raise FileNotFoundError(f"driver-config file not found: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"failed to parse driver-config JSON: {path}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"driver-config must be a JSON object: {path}")
+    return data
+
+
 def _save_scene(driver, path: Path, scene: dict[str, dict], registry=None) -> None:
     existing = load_environment_doc(path)
     runtime_state = {}
@@ -118,6 +133,7 @@ def watch_loop(
     gui: bool = False,
     poll_interval: float = 1.0,
     *,
+    driver_kwargs: dict[str, object] | None = None,
     env_file: Path | None = None,
     registry=None,
 ) -> None:
@@ -130,8 +146,10 @@ def watch_loop(
     _log(f"Driver    : {driver_name}")
     _log(f"GUI       : {gui}")
     _log(f"Env File  : {env_file}")
+    if driver_kwargs:
+        _log(f"DriverCfg : {json.dumps(driver_kwargs, ensure_ascii=False, sort_keys=True)}")
 
-    driver = load_driver(driver_name, gui=gui)
+    driver = load_driver(driver_name, gui=gui, **(driver_kwargs or {}))
 
     with driver:
         _install_profile(driver, workspace)
@@ -204,9 +222,20 @@ def main() -> None:
     parser.add_argument(
         "--interval", type=float, default=1.0, help="Poll interval (seconds)",
     )
+    parser.add_argument(
+        "--driver-config",
+        default=None,
+        help="Path to a JSON object file that will be passed through to the selected driver as keyword args.",
+    )
     args = parser.parse_args()
 
     workspace = Path(args.workspace).expanduser().resolve() if args.workspace else None
+    driver_config_path = Path(args.driver_config).expanduser().resolve() if args.driver_config else None
+    try:
+        driver_kwargs = load_driver_config(driver_config_path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     robot_workspace, env_file, resolved_driver, registry = _resolve_watchdog_topology(
         workspace,
         args.driver,
@@ -223,6 +252,7 @@ def main() -> None:
         driver_name=resolved_driver,
         gui=args.gui,
         poll_interval=args.interval,
+        driver_kwargs=driver_kwargs,
         env_file=env_file,
         registry=registry,
     )

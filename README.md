@@ -94,6 +94,12 @@ Open two terminals:
 ```bash
 python hal/hal_watchdog.py
 ```
+To pass driver-specific runtime configuration without specializing the watchdog CLI, use:
+```bash
+python hal/hal_watchdog.py --driver <driver_name> --driver-config path/to/driver.json
+```
+The config file must be a JSON object and its keys are passed through to the selected driver constructor unchanged.
+
 To use real-world ReKep instead of simulation, install the plugin and run:
 ```bash
 python hal/hal_watchdog.py --driver rekep_real

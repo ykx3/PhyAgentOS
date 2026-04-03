@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from loguru import logger
+try:
+    from loguru import logger
+except ImportError:  # pragma: no cover - fallback for lightweight test envs
+    logger = logging.getLogger(__name__)
 
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.embodiment_registry import EmbodimentRegistry
 from PhyAgentOS.providers.base import LLMProvider
+
+if TYPE_CHECKING:
+    from PhyAgentOS.embodiment_registry import EmbodimentRegistry
 
 _FENCE_OPEN = "```json"
 _FENCE_CLOSE = "```"
@@ -105,7 +112,7 @@ class EmbodiedActionTool(Tool):
             f"Action Type: {action_type}\n"
             f"Parameters: {params_json}\n"
             f"Reasoning: {reasoning}\n\n"
-            "When evaluating semantic navigation and localization actions, verify target existence, "
+            "When evaluating semantic navigation, target navigation, and localization actions, verify target existence, "
             "navigation support, safe approach distance, connection availability, and whether current "
             "nav state suggests the robot can accept the task.\n"
             "If it is safe and valid, respond with exactly 'VALID'.\n"

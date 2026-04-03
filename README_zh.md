@@ -92,6 +92,12 @@ paos onboard
 python hal/hal_watchdog.py
 ```
 
+如果需要给某个 driver 传递运行时参数，而又不希望为特定机器人定制 watchdog CLI，可使用：
+```bash
+python hal/hal_watchdog.py --driver <driver_name> --driver-config path/to/driver.json
+```
+其中配置文件必须是一个 JSON object，内容会原样作为关键字参数透传给所选 driver。
+
 如果要使用真机 ReKep 而不是仿真，请先安装插件，再执行：
 
 ```bash

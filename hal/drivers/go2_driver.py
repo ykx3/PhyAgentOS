@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from hal.base_driver import BaseDriver
+from hal.navigation import TargetNavigationBackend
 from hal.ros2 import ROS2Bridge
 
 _PROFILES_DIR = Path(__file__).resolve().parent.parent / "profiles"
@@ -22,6 +23,10 @@ class Go2Driver(BaseDriver):
         self._gui = gui
         self._bridge = bridge or ROS2Bridge(enabled=False)
         self._objects: dict[str, dict] = {}
+        self._target_navigation_backend = TargetNavigationBackend(
+            backend_mode=kwargs.get("target_navigation_backend", "mock"),
+            **kwargs,
+        )
         self._connection_config = {
             "transport": kwargs.get("transport", "ssh"),
             "host": kwargs.get("host", "192.168.1.23"),
@@ -41,9 +46,10 @@ class Go2Driver(BaseDriver):
     def connect(self) -> bool:
         state = self._robot_state(self.ROBOT_ID)
         conn = dict(state["connection_state"])
+        backend_ok = self._target_navigation_backend.connect()
         conn.update(
             {
-                "status": "connected",
+                "status": "connected" if backend_ok else "degraded",
                 "transport": self._connection_config["transport"],
                 "host": self._connection_config["host"],
                 "port": self._connection_config["port"],
@@ -52,11 +58,13 @@ class Go2Driver(BaseDriver):
             }
         )
         state["connection_state"] = conn
-        return True
+        self._refresh_target_navigation_runtime(self.ROBOT_ID)
+        return backend_ok
 
     def disconnect(self) -> None:
         state = self._robot_state(self.ROBOT_ID)
         conn = dict(state["connection_state"])
+        self._target_navigation_backend.disconnect()
         conn.update(
             {
                 "status": "disconnected",
@@ -71,9 +79,15 @@ class Go2Driver(BaseDriver):
     def health_check(self) -> bool:
         state = self._robot_state(self.ROBOT_ID)
         conn = dict(state["connection_state"])
+        backend_health = self._target_navigation_backend.health_check()
         if self.is_connected():
             conn["last_heartbeat"] = self._stamp()
+            if backend_health.get("status") == "degraded":
+                conn["last_error"] = "backend_degraded"
+            else:
+                conn["last_error"] = None
             state["connection_state"] = conn
+            self._refresh_target_navigation_runtime(self.ROBOT_ID)
             return True
 
         if self._connection_config.get("reconnect_policy") == "auto":
@@ -109,10 +123,13 @@ class Go2Driver(BaseDriver):
 
         if action_type == "semantic_navigate":
             return self._semantic_navigate(params)
+        if action_type == "target_navigation":
+            return self._target_navigation(params)
         if action_type == "localize":
             return self._localize(params)
         if action_type == "stop":
             robot_id = params.get("robot_id", self.ROBOT_ID)
+            self._target_navigation_backend.stop()
             self._update_nav_state(
                 robot_id,
                 mode="idle",
@@ -203,6 +220,32 @@ class Go2Driver(BaseDriver):
         self._bridge.publish("/navigate_to_pose", goal_pose)
         return f"Navigation success: arrived near {target_ref.get('label', 'target')}."
 
+    def _target_navigation(self, params: dict[str, Any]) -> str:
+        robot_id = params.get("robot_id", self.ROBOT_ID)
+        target_label = str(params.get("target_label", "")).strip()
+        if not target_label:
+            self._update_nav_state(
+                robot_id,
+                mode="navigating",
+                status="failed",
+                target_ref=None,
+                goal=None,
+                path_progress=0.0,
+                last_error="target_not_found",
+            )
+            return "Navigation failed: target_label is required."
+
+        status = self._target_navigation_backend.run_navigation(params)
+        self._refresh_target_navigation_runtime(robot_id)
+        final_status = self._robot_state(robot_id).get("nav_state", {}).get("status", "idle")
+        if final_status == "arrived":
+            return f"Target navigation success: arrived near {target_label}."
+        if final_status == "blocked":
+            return f"Target navigation blocked near {target_label}."
+        if final_status == "stopped":
+            return f"Target navigation cancelled for {target_label}."
+        return f"Target navigation failed for {target_label}: {status.get('message', 'unknown error')}."
+
     def _localize(self, params: dict[str, Any]) -> str:
         robot_id = params.get("robot_id", self.ROBOT_ID)
         state = self._robot_state(robot_id)
@@ -279,8 +322,18 @@ class Go2Driver(BaseDriver):
                 "recovery_count": 0,
                 "last_error": None,
                 "relocalization_confidence": None,
+                "target_label": None,
+                "active_horizon_target": None,
+                "history_tail": [],
             },
         }
+
+    def _refresh_target_navigation_runtime(self, robot_id: str) -> None:
+        runtime = self._target_navigation_backend.snapshot_runtime(
+            robot_id,
+            current_state=self._robot_state(robot_id),
+        )
+        self._runtime_state.setdefault("robots", {}).update(runtime)
 
     @staticmethod
     def _stamp() -> str:

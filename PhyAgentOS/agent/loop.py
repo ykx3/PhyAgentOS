@@ -29,6 +29,7 @@ from PhyAgentOS.agent.tools.shell import ExecTool
 from PhyAgentOS.agent.tools.semantic_navigation import SemanticNavigationTool
 from PhyAgentOS.agent.tools.spawn import SpawnTool
 from PhyAgentOS.agent.tools.web import WebFetchTool, WebSearchTool
+from PhyAgentOS.agent.tools.target_navigation import TargetNavigationTool
 from PhyAgentOS.bus.events import InboundMessage, OutboundMessage
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.providers.base import LLMProvider
@@ -156,6 +157,11 @@ class AgentLoop:
         self.tools.register(action_tool)
         self.tools.register(SceneGraphQueryTool(workspace=self.workspace))
         self.tools.register(SemanticNavigationTool(
+            workspace=self.workspace,
+            action_tool=action_tool,
+            registry=self.embodiment_registry,
+        ))
+        self.tools.register(TargetNavigationTool(
             workspace=self.workspace,
             action_tool=action_tool,
             registry=self.embodiment_registry,

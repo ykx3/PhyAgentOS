@@ -2,11 +2,15 @@
 
 import asyncio
 import json
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from loguru import logger
+try:
+    from loguru import logger
+except ImportError:  # pragma: no cover - fallback for lightweight test envs
+    logger = logging.getLogger(__name__)
 
 
 @dataclass

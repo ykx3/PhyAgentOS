@@ -19,6 +19,7 @@ The Critic Agent reads this file to validate whether proposed actions are safe a
 | Action | Parameters | Description |
 |--------|-----------|-------------|
 | `semantic_navigate` | `robot_id, target_ref, goal_pose, approach_distance, timeout_s` | Navigate to a semantic target using scene graph lookup and Nav2-compatible goals |
+| `target_navigation` | `robot_id, target_label, detection_hint?, success_distance_m?, success_heading_deg?, control_mode?, timeout_s?` | Navigate toward a lower-level visual target label using the target navigation stack |
 | `localize` | `robot_id, mode, timeout_s` | Trigger relocalization workflow |
 | `stop` | `robot_id` | Stop the current navigation task |
 | `connect_robot` | `robot_id` | Establish the control connection to the robot |
