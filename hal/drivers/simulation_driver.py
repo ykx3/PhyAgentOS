@@ -49,5 +49,9 @@ class SimulationDriver(BaseDriver):
     def get_scene(self) -> dict[str, dict]:
         return self._sim.get_scene()
 
+    def get_runtime_state(self) -> dict:
+        """Return simulated robot runtime state."""
+        return self._sim.get_runtime_state()
+
     def close(self) -> None:
         self._sim.close()
