@@ -16,17 +16,20 @@ class ProvidersManager:
     (main, coding, multimodal) to optimize for different use cases.
     """
 
-    def __init__(self, config: Config, modes: dict, default_mode: str = "auto"):
+    def __init__(self, config: Config, modes: dict, default_mode: str = "auto", thinking_routing=None):
         """
         Initialize the providers manager.
 
         Args:
             modes: AgentModes instance with mode configurations (main, coding, multimodal)
             default_mode: Default mode to use when none is specified ("auto" by default)
+            thinking_routing: ThinkingRoutingConfig for adaptive fast/slow model routing
         """
+        from PhyAgentOS.config.schema import ThinkingRoutingConfig
         self._modes = modes
         self._default_mode = default_mode
         self._config = config
+        self.thinking_routing = thinking_routing or ThinkingRoutingConfig()
 
     def _create_provider(self, model_id: str, provider_name: str = "auto") -> LLMProvider:
         """

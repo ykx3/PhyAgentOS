@@ -123,10 +123,15 @@ class EmbodiedActionTool(Tool):
         )
 
         logger.info("Critic evaluating action: {} {}", action_type, parameters)
-        response = await self.provider.chat_with_retry(
+        critic_kwargs: dict[str, Any] = dict(
             messages=[{"role": "user", "content": critic_prompt}],
             model=self.model,
         )
+        # Use fast mode for Critic validation when thinking routing is available
+        if hasattr(self.provider, 'thinking_routing') and self.provider.thinking_routing.enabled:
+            critic_kwargs["mode"] = self.provider.thinking_routing.fast_mode
+            logger.debug("Critic using fast mode: {}", self.provider.thinking_routing.fast_mode)
+        response = await self.provider.chat_with_retry(**critic_kwargs)
         critic_result = response.content.strip()
 
         if critic_result == "VALID":

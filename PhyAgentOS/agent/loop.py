@@ -119,6 +119,31 @@ class AgentLoop:
             get_tool_definitions=self.tools.get_definitions,
         )
         self._register_default_tools()
+
+        # Thinking routing setup
+        self._thinking_routing_enabled = False
+        self._thinking_routing_config = None
+        if isinstance(self.provider, ProvidersManager):
+            tr = getattr(self.provider, 'thinking_routing', None)
+            if tr and tr.enabled:
+                if tr.thinking_mode in self.provider._modes and tr.fast_mode in self.provider._modes:
+                    self._thinking_routing_enabled = True
+                    self._thinking_routing_config = tr
+                    logger.info(
+                        "Thinking routing enabled: thinking={}, fast={}, max_consecutive_fast={}",
+                        tr.thinking_mode, tr.fast_mode, tr.max_consecutive_fast,
+                    )
+                else:
+                    missing = []
+                    if tr.thinking_mode not in self.provider._modes:
+                        missing.append(tr.thinking_mode)
+                    if tr.fast_mode not in self.provider._modes:
+                        missing.append(tr.fast_mode)
+                    logger.warning(
+                        "Thinking routing configured but mode(s) {} not found in agent modes",
+                        missing,
+                    )
+
         # Load env variables
         try:
             from dotenv import load_dotenv
@@ -196,6 +221,50 @@ class AgentLoop:
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
 
+    def _resolve_thinking_mode(
+        self,
+        iteration: int,
+        consecutive_fast: int,
+        last_tool_had_error: bool,
+    ) -> str:
+        """Determine whether to use thinking or fast mode for this iteration.
+
+        Routing rules (in priority order):
+        1. First iteration (processing user message) -> thinking
+        2. Previous tool returned an error -> thinking (error recovery)
+        3. Exceeded max_consecutive_fast threshold -> thinking (periodic sanity check)
+        4. Otherwise -> fast (routine tool-loop continuation)
+
+        Returns empty string when thinking routing is disabled.
+        """
+        if not self._thinking_routing_enabled:
+            return ""
+
+        cfg = self._thinking_routing_config
+
+        # Rule 1: First iteration always uses thinking model
+        if iteration == 1:
+            return cfg.thinking_mode
+
+        # Rule 2: Error recovery needs deep reasoning
+        if last_tool_had_error:
+            return cfg.thinking_mode
+
+        # Rule 3: Periodic thinking check after consecutive fast calls
+        if consecutive_fast >= cfg.max_consecutive_fast:
+            return cfg.thinking_mode
+
+        # Rule 4: Default to fast for routine operations
+        return cfg.fast_mode
+
+    @staticmethod
+    def _is_tool_error(result: str) -> bool:
+        """Check if a tool result indicates an error."""
+        if not result:
+            return False
+        lower = result.lower()
+        return lower.startswith("error:") or lower.startswith("error ") or "traceback" in lower
+
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
         """Remove <think>…</think> blocks that some models embed in content."""
@@ -224,17 +293,24 @@ class AgentLoop:
         iteration = 0
         final_content = None
         tools_used: list[str] = []
+        consecutive_fast = 0
+        last_tool_had_error = False
 
         while iteration < self.max_iterations:
             iteration += 1
 
             tool_defs = self.tools.get_definitions()
 
-            response = await self.provider.chat_with_retry(
-                messages=messages,
-                tools=tool_defs,
-                model=self.model,
+            # Adaptive thinking routing: select fast or thinking mode
+            mode = self._resolve_thinking_mode(iteration, consecutive_fast, last_tool_had_error)
+            chat_kwargs: dict[str, Any] = dict(
+                messages=messages, tools=tool_defs, model=self.model,
             )
+            if mode:
+                chat_kwargs["mode"] = mode
+                logger.debug("Thinking routing: iteration={}, mode={}", iteration, mode)
+
+            response = await self.provider.chat_with_retry(**chat_kwargs)
 
             if response.has_tool_calls:
                 if on_progress:
@@ -253,6 +329,7 @@ class AgentLoop:
                     thinking_blocks=response.thinking_blocks,
                 )
 
+                last_tool_had_error = False
                 for tool_call in response.tool_calls:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
@@ -261,6 +338,15 @@ class AgentLoop:
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+                    if self._is_tool_error(result):
+                        last_tool_had_error = True
+
+                # Update thinking routing counters
+                if self._thinking_routing_enabled:
+                    if mode == self._thinking_routing_config.fast_mode:
+                        consecutive_fast += 1
+                    else:
+                        consecutive_fast = 0
             else:
                 clean = self._strip_think(response.content)
                 # Don't persist error responses to session history — they can

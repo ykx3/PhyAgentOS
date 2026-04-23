@@ -277,12 +277,28 @@ class ModeConfig(Base):
     describe: str = "This is a description of the mode."
 
 
+class ThinkingRoutingConfig(Base):
+    """Configuration for adaptive thinking routing between fast and slow models.
+
+    When enabled, the agent dynamically routes LLM calls between a'thinking'
+    model (for complex reasoning) and a 'fast' model (for simple feedback),
+    reducing latency on routine operations while preserving deep reasoning
+    when needed.
+    """
+
+    enabled: bool = False
+    max_consecutive_fast: int = 3  # Force a thinking check after N consecutive fast iterations
+    thinking_mode: str = "thinking"  # Mode name for deep reasoning model
+    fast_mode: str = "fast"  # Mode name for quick response model
+
+
 class AgentModes(Base):
     """Configuration for agent modes."""
 
     enabled: bool = False
     default_mode: str = "auto"
     models: dict[str, ModeConfig] = Field(default_factory=dict)
+    thinking_routing: ThinkingRoutingConfig = Field(default_factory=ThinkingRoutingConfig)
 
 
 class AgentsConfig(Base):

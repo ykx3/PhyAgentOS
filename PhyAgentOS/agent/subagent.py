@@ -118,11 +118,15 @@ class SubagentManager:
             while iteration < max_iterations:
                 iteration += 1
 
-                response = await self.provider.chat_with_retry(
+                subagent_kwargs: dict[str, Any] = dict(
                     messages=messages,
                     tools=tools.get_definitions(),
                     model=self.model,
                 )
+                # Use fast mode for subagents when thinking routing is available
+                if hasattr(self.provider, 'thinking_routing') and self.provider.thinking_routing.enabled:
+                    subagent_kwargs["mode"] = self.provider.thinking_routing.fast_mode
+                response = await self.provider.chat_with_retry(**subagent_kwargs)
 
                 if response.has_tool_calls:
                     tool_call_dicts = [

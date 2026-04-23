@@ -279,6 +279,63 @@ def _make_provider(config: Config):
     return provider
 
 
+def _maybe_wrap_modes(config: Config, base_provider):
+    """Wrap provider in ProvidersManager when agent modes are enabled.
+
+    When config.agents.modes is enabled and has model definitions,
+    this creates a ProvidersManager that can route between different
+    models for different modes (e.g. thinking vs fast for adaptive
+    thinking routing).
+    """
+    modes_cfg = config.agents.modes
+    if not modes_cfg.enabled or not modes_cfg.models:
+        return base_provider
+
+    from PhyAgentOS.providers.base import GenerationSettings
+    from PhyAgentOS.providers.litellm_provider import LiteLLMProvider
+    from PhyAgentOS.providers.providers_manager import ProvidersManager
+
+    defaults = config.agents.defaults
+    gen_settings = GenerationSettings(
+        temperature=defaults.temperature,
+        max_tokens=defaults.max_tokens,
+        reasoning_effort=defaults.reasoning_effort,
+    )
+
+    modes = {}
+    for mode_name, mode_cfg in modes_cfg.models.items():
+        p = config.get_provider(mode_cfg.model)
+        provider_name = config.get_provider_name(mode_cfg.model)
+        mode_provider = LiteLLMProvider(
+            api_key=p.api_key if p else None,
+            api_base=config.get_api_base(mode_cfg.model),
+            default_model=mode_cfg.model,
+            extra_headers=p.extra_headers if p else None,
+            provider_name=provider_name,
+        )
+        mode_provider.generation = gen_settings
+        modes[mode_name] = {"provider": mode_provider, "describe": mode_cfg.describe}
+
+    # Ensure 'main' mode exists for fallback
+    if "main" not in modes:
+        modes["main"] = {"provider": base_provider, "describe": "Default mode"}
+
+    console.print(f"[green]✓[/green] Agent modes enabled: {', '.join(modes.keys())}")
+    if modes_cfg.thinking_routing.enabled:
+        console.print(
+            f"  Thinking routing: {modes_cfg.thinking_routing.thinking_mode} "
+            f"/ {modes_cfg.thinking_routing.fast_mode} "
+            f"(check every {modes_cfg.thinking_routing.max_consecutive_fast} fast calls)"
+        )
+
+    return ProvidersManager(
+        config=config,
+        modes=modes,
+        default_mode=modes_cfg.default_mode,
+        thinking_routing=modes_cfg.thinking_routing,
+    )
+
+
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:
     """Load config and optionally override the active workspace."""
     from PhyAgentOS.config.loader import load_config, set_config_path
@@ -351,6 +408,7 @@ def gateway(
         sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     provider = _make_provider(config)
+    provider = _maybe_wrap_modes(config, provider)
     session_manager = SessionManager(config.workspace_path)
 
     # Create cron service first (callback set after agent creation)
@@ -538,6 +596,7 @@ def agent(
 
     bus = MessageBus()
     provider = _make_provider(config)
+    provider = _maybe_wrap_modes(config, provider)
 
     # Create cron service for tool usage (no callback needed for CLI unless running)
     cron_store_path = get_cron_dir() / "jobs.json"
